@@ -10,7 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.stream.Collectors;
+//import java.util.stream.Collectors;
 
 public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     TftpServerUsers loggedUserList;
@@ -25,6 +25,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     byte[] response;
     boolean shouldTerminate;
 
+    //CONSTRUCTOR
     public TftpProtocol(TftpServerUsers users){
         this.loggedUserList = users;
     }
@@ -37,9 +38,52 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         this.connections = connections;
         this.pathToDir = "Files";        
     }
-
+    
     @Override
+    public boolean shouldTerminate() {
+        return shouldTerminate;
+    } 
+    
+    @Override
+    //THE BIG MAMA
     public void process(byte[] message) {
+        OpcodeOperations opcodeOp = new OpcodeOperations(message[1]);
+        if (Opcode.UNDEFINED.equals(opcodeOp.opcode) || Opcode.BCAST.equals(opcodeOp.opcode)){
+            generateError(4, "Illegal TFTP operation");
+        }
+        if (!(opcodeOp.opcode.equals(Opcode.LOGRQ) || loggedUserList.isUserLoggedIn(userName))){
+            generateError(6, "User not logged in");
+        } else {
+            switch (opcodeOp.opcode) {
+                case LOGRQ:
+                    userLogin(message);
+                    break;
+                case DELRQ:
+                    fileToDelete(message);
+                    break;
+                case RRQ:
+                    processReadRequest(message);
+                    break;
+                case WRQ:
+                    prepareToReadFromUser(message);
+                    break;
+                case DIRQ:
+                    getDirectory();
+                    break;
+                case DATA:
+                    getData(message);
+                    break;
+                case ACK:
+                    processAck(message);
+                    break;
+                case ERROR:
+                    processError(message);
+                    break;
+                case DISC:
+                    disconnect();
+                    return;
+            }
+        }
         responseToSpecificUser();
         brcastToUser(message);        
     }
@@ -61,7 +105,14 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         OpcodeOperations op = new OpcodeOperations(Opcode.ACK);
         response = op.getGeneralAck();
     }
-
+    //5
+    private byte[] convertIntToByte(int number) {
+        byte[] bytes = new byte[2];
+        bytes[0] = (byte) ((number >> 8) & 0xFF);
+        bytes[1] = (byte) (number & 0xFF);
+        return bytes;
+    }
+    
     //ACK
     private void processAck(byte[] message) {
         if (ackForPacket(message)){
@@ -78,19 +129,21 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     private boolean ackForPacket(byte[] message) {
         return extractAckPacketNumber(message) != 0;
     }
+
     //CONNECTED ACK returns ack block num 
     private int extractAckPacketNumber(byte[] message) {
         return ((message[2] & 0xFF) << 8) | (message[3] & 0xFF);
     }
+    
     //CONNECTED ACK checks if packet num = block num
     private boolean ackPacketSuccesses(byte[] message) {
         return extractAckPacketNumber(message) == extractDataPacketNumber(responseToUserQueue.peek());
     }
+    
     //CONNECTED ACK returns data block num 
     private int extractDataPacketNumber(byte[] dataPacket) {
         return ((dataPacket[4] & 0xFF) << 8) | (dataPacket[5] & 0xFF);
     }
-
 
     //MSG to one user
     private void responseToSpecificUser() {
@@ -134,6 +187,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         System.arraycopy(errorPrefix, 0, response, 0, errorPrefix.length);
         System.arraycopy(errorMessage, 0, response, errorPrefix.length, errorMessage.length);
     }
+    
     //ERROR
     private void processError(byte[] message) {
         System.out.println(extractStringFromMsg(message)); //For human use
@@ -174,7 +228,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         return message;
     }
 
-    //CONNECTED encode
+    //CONNECTED ENCODE
     private boolean hasToAddZeroByte(byte[] message) {
         OpcodeOperations opcodeOperations = extractOpFromMessage(message);
         return opcodeOperations.shouldAddZero();
@@ -218,7 +272,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         }        
     } 
     
-    //DATA - ACK for confirming data packet numbers 
+    //CONNECTED DATA : ack for confirming data packet numbers 
     private void generateAckReceived(byte[] message) {
         OpcodeOperations opcodeOperationsResponse = new OpcodeOperations(Opcode.ACK);
         response = new byte[4];
@@ -226,8 +280,8 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         byte[] packetNumber = new byte[]{message[4], message[5]};
         System.arraycopy(packetNumber, 0, response,2, packetNumber.length);
     } 
-
-    //CONNECTED DATA - sends the complete file
+    
+    //CONNECTED DATA : send the complete file
     private void completeIncomingFile() {
         byte[] readyToWrite = generateBytesFromData();
         try {
@@ -241,7 +295,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         }
     }
 
-    //CONNECTED DATA - creates a whole file from the data packets
+    //CONNECTED DATA : creates a whole file from the data packets
     private byte[] generateBytesFromData() {
         byte[] inProcess = incomingDataQueue.remove();
         byte[] pureData = Arrays.copyOfRange(inProcess, 6, inProcess.length);
@@ -251,6 +305,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         }
         return pureData;
     }
+
     //CONNECTED DATA
     private byte[] mergeBytes(byte[] pureData, byte[] dataToMerge) {
         byte[] appended = new byte[pureData.length + dataToMerge.length];
@@ -267,8 +322,8 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         byte[] fileData = getDataOfFile(fileToRead);
         createDataPackets(fileData);
     }
-
-    //RRQ - CONNECTED
+    
+    //CONNECTED RRQ  
     private byte[] getDataOfFile(String name) {
         File file = getTheFile(name);
         byte[] data = new byte[(int) file.length()];
@@ -282,7 +337,40 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         return data;
     }
 
-    //WRQ - check if 
+    //CONNECTED RRQ 
+    private void createDataPackets(byte[] data) {
+        generateGeneralAck();
+        connections.send(connectionId, response);
+        response = new byte[]{};
+        int numberOfPackets;
+        numberOfPackets = (data.length / 512) + 1;
+        responseToUserQueue = new LinkedList<>();
+        for (int i = 1; i <= numberOfPackets; i++){
+            int sizeOfData = Math.min(512, data.length - ((i -1) * 512));
+            byte[] dataPacket = new byte[6 + sizeOfData];
+            byte[] dataPrefix = generateDataPrefix(sizeOfData, i);
+            System.arraycopy(dataPrefix, 0, dataPacket, 0, dataPrefix.length);
+            if (sizeOfData != 0){ //FOR 1 PACKET
+                System.arraycopy(data, (i - 1) * 512, dataPacket, 6, sizeOfData);
+            }
+            responseToUserQueue.add(dataPacket);
+        }
+        response = responseToUserQueue.peek(); //first packet ready
+    }
+
+    //RRQ : data creates 6 digit data prefix
+    private byte[] generateDataPrefix(int sizeOfData, int packetNum) {
+        byte[] prefix = new byte[6];
+        OpcodeOperations operations = new OpcodeOperations("DATA");
+        System.arraycopy(operations.getInResponseFormat(), 0, prefix, 0, operations.getInResponseFormat().length);
+        System.arraycopy(convertIntToByte(sizeOfData), 0, prefix, 2, 2);
+        System.arraycopy(convertIntToByte(packetNum), 0, prefix, 4, 2);
+        return prefix;
+
+    }
+    
+
+    //WRQ
     private void prepareToReadFromUser(byte[] message) {
         fileNameInProcess = extractStringFromMsg(message);
         if (fileWithThisNameExist(fileNameInProcess)){
@@ -293,9 +381,44 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
             generateGeneralAck();
         }
     }
-    @Override
-    public boolean shouldTerminate() {
-        return shouldTerminate;
-    } 
-   
+
+    //DIRQ  
+    private void getDirectory() { 
+        List<String> listOfFiles = new LinkedList<>();
+        String directoryPath = pathToDir;            
+        File directory = new File(directoryPath);             
+        // Using listFiles method we get all the files of a directory        
+        File[] files = directory.listFiles();  
+        if (files != null) { 
+            for (File file : files) { 
+                listOfFiles.add(file.getName()); 
+            } 
+        }       
+        generateDirFromStringToByte(listOfFiles);                    
+    }
+    
+    //CONNECTED DIRQ
+    private byte[] generateDirFromStringToByte(List<String> listOfFiles) {
+        List<byte[]> listOfFilesAsByte = new LinkedList<>();        
+        int sizeOfDir = 0;
+        int pointerForAddingFiles = 0;
+        if(listOfFiles == null) 
+            System.out.println("The directory is empty or didn't convert to byte");
+        for(String filename : listOfFiles){
+            byte[] fileByteName = extractBytesFromMsg(filename);
+            sizeOfDir += fileByteName.length;
+            listOfFilesAsByte.add(fileByteName);
+        }
+        sizeOfDir += listOfFilesAsByte.size() - 1; //make gap between each file with 0 byte
+        byte[] dirData = new byte[sizeOfDir];
+        for(byte[] byteFileName : listOfFilesAsByte){
+            System.arraycopy(byteFileName, 0, dirData, pointerForAddingFiles, byteFileName.length);
+            pointerForAddingFiles += byteFileName.length;
+            dirData[pointerForAddingFiles] = (byte) 0;
+            pointerForAddingFiles++;
+        }
+        return dirData;
+    }
+    
+
 }
