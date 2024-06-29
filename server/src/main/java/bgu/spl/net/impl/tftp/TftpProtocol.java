@@ -40,12 +40,59 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
 
     @Override
     public void process(byte[] message) {
-        // TODO implement this
-        brcastToUser(message);        
         responseToSpecificUser();
+        brcastToUser(message);        
     }
 
-    //message to one user
+    //1
+    private String extractStringFromMsg(byte[] message){
+        return new String(Arrays.copyOfRange(message,2, message.length));
+    }
+    //2
+    private byte[] extractBytesFromMsg(String str) {
+        return str.getBytes(StandardCharsets.UTF_8);
+    }
+    //3
+    private OpcodeOperations extractOpFromMessage(byte[] message) {
+        return new OpcodeOperations(message[1]);
+    }
+    //4
+    private void generateGeneralAck() {
+        OpcodeOperations op = new OpcodeOperations(Opcode.ACK);
+        response = op.getGeneralAck();
+    }
+
+    //ACK
+    private void processAck(byte[] message) {
+        if (ackForPacket(message)){
+            if (ackPacketSuccesses(message)){
+                responseToUserQueue.remove(); //Packet was sent and received
+                response = responseToUserQueue.peek();
+            } else {
+                throw new RuntimeException("The ACK packet that was received does not match the last packet that was send, received ACK for the packet number " + extractDataPacketNumber(message));
+            }
+        }
+    }
+
+    //CONNECTED ACK returns if is a non 0 ACK
+    private boolean ackForPacket(byte[] message) {
+        return extractAckPacketNumber(message) != 0;
+    }
+    //CONNECTED ACK returns ack block num 
+    private int extractAckPacketNumber(byte[] message) {
+        return ((message[2] & 0xFF) << 8) | (message[3] & 0xFF);
+    }
+    //CONNECTED ACK checks if packet num = block num
+    private boolean ackPacketSuccesses(byte[] message) {
+        return extractAckPacketNumber(message) == extractDataPacketNumber(responseToUserQueue.peek());
+    }
+    //CONNECTED ACK returns data block num 
+    private int extractDataPacketNumber(byte[] dataPacket) {
+        return ((dataPacket[4] & 0xFF) << 8) | (dataPacket[5] & 0xFF);
+    }
+
+
+    //MSG to one user
     private void responseToSpecificUser() {
         byte[] theResponse = encode(response);
         response = null;
@@ -53,6 +100,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
             connections.send(connectionId, theResponse);
     }
 
+    //BRCAST
     private void brcastToUser(byte[] message) {
         if(needToBcast)
         {
@@ -76,21 +124,21 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
             needToBcast = false;
         }
     }
-
-    private String extractStringFromMsg(byte[] message){
-        String result = new String(message, 2, message.length - 3, StandardCharsets.UTF_8);
-        return result;
-    }
-
-    private byte[] extractBytesFromMsg(String str) {
-        return str.getBytes(StandardCharsets.UTF_8);
-    }
-
-    private void generateGeneralAck() {
-        OpcodeOperations op = new OpcodeOperations(Opcode.ACK);
-        response = op.getGeneralAck();
-    }
     
+    //ERROR
+    private void generateError(int errorCode, String errorMsg) {
+        OpcodeOperations opcodeOperations = new OpcodeOperations(Opcode.ERROR);
+        byte[] errorPrefix = opcodeOperations.getInResponseFormat((byte) errorCode);
+        byte[] errorMessage = extractBytesFromMsg(errorMsg);
+        response = new byte[errorMessage.length + errorPrefix.length];
+        System.arraycopy(errorPrefix, 0, response, 0, errorPrefix.length);
+        System.arraycopy(errorMessage, 0, response, errorPrefix.length, errorMessage.length);
+    }
+    //ERROR
+    private void processError(byte[] message) {
+        System.out.println(extractStringFromMsg(message)); //For human use
+    }
+
     //LOGRQ
     private void userLogin(byte[] message){
         userName = extractStringFromMsg(message);
@@ -106,14 +154,15 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     //DISC
     private void disconnect(){
         generateGeneralAck();
-        if(response != null) connections.send(connectionId, encode(response));
+        if(response != null) 
+            connections.send(connectionId, encode(response));
         response = null;
         loggedUserList.logOutUser(connectionId);
         connections.disconnect(connectionId);
         shouldTerminate = true;        
     }
 
-    //CONNECTED DISC adds zero byte at end of msg
+    //ENCODE
     public byte[] encode(byte[] message) {
         if ((message != null) && (hasToAddZeroByte(message))){
             byte[] zero = {(byte) 0};
@@ -125,15 +174,10 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         return message;
     }
 
-    //CONNECTED DISC checks if needs to end with 0
+    //CONNECTED encode
     private boolean hasToAddZeroByte(byte[] message) {
         OpcodeOperations opcodeOperations = extractOpFromMessage(message);
         return opcodeOperations.shouldAddZero();
-    }
-    
-    //CONNECTED DISC to know which action
-    private OpcodeOperations extractOpFromMessage(byte[] message) {
-        return new OpcodeOperations(message[1]);
     }
     
     //DELRQ
@@ -159,77 +203,99 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         return file.exists();
     }
 
-    //CONNECTED DELRQ : creates or gets file from directory
+    //CONNECTED DELRQ : creates file in directory
     private File getTheFile(String fileName) {
         return new File(pathToDir + File.separator + fileName);        
     }
-
-
-    //ERROR
-    private void generateError(int errorCode, String errorMsg) {
-        OpcodeOperations opcodeOperations = new OpcodeOperations(Opcode.ERROR);
-        byte[] errorPrefix = opcodeOperations.getInResponseFormat((byte) errorCode);
-        byte[] errorMessage = extractBytesFromMsg(errorMsg);
-        response = new byte[errorMessage.length + errorPrefix.length];
-        System.arraycopy(errorPrefix, 0, response, 0, errorPrefix.length);
-        System.arraycopy(errorMessage, 0, response, errorPrefix.length, errorMessage.length);
-    }
-    //ERROR
-    private void processError(byte[] message) {
-        System.out.println(extractStringFromMsg(message)); //For human use
-    }
-
-    //ACK
-    private void processAck(byte[] message) {
-        if (ackForPacket(message)){
-            if (ackPacketSuccesses(message)){
-                responseToUserQueue.remove(); //Packet was sent and received
-                response = responseToUserQueue.peek();
-            } else {
-                throw new RuntimeException("The ACK packet that was received does not match the last packet that was send, received ACK for the packet number " + extractDataPacketNumber(message));
-            }
-        }
-    }
-    //CONNECTED ACK checks if packet num = block num
-    private boolean ackPacketSuccesses(byte[] message) {
-        return extractAckPacketNumber(message) == extractDataPacketNumber(responseToUserQueue.peek());
-    }
-    //CONNECTED ACK returns if it is a non 0 ACK
-    private boolean ackForPacket(byte[] message) {
-        return extractAckPacketNumber(message) != 0;
-    }
-    //CONNECTED ACK returns ack block num 
-    private int extractAckPacketNumber(byte[] message) {
-        return ((message[2] & 0xFF) << 8) | (message[3] & 0xFF);
-    }
-    //CONNECTED ACK returns data block num 
-    private int extractDataPacketNumber(byte[] dataPacket) {
-        return ((dataPacket[4] & 0xFF) << 8) | (dataPacket[5] & 0xFF);
-    }
-
+    
+    //DATA
     private void getData (byte[] data){
         incomingDataQueue.add(data);
         generateAckReceived(data);
         if(data.length != 518){ //last packet size
-            
-        }
-        
+            completeIncomingFile();
+            incomingDataQueue = null;
+        }        
     } 
-    //ACK for confirming data packet numbers 
+    
+    //DATA - ACK for confirming data packet numbers 
     private void generateAckReceived(byte[] message) {
         OpcodeOperations opcodeOperationsResponse = new OpcodeOperations(Opcode.ACK);
         response = new byte[4];
         System.arraycopy(opcodeOperationsResponse.getInResponseFormat(), 0, response, 0, 2);
         byte[] packetNumber = new byte[]{message[4], message[5]};
         System.arraycopy(packetNumber, 0, response,2, packetNumber.length);
-    }    
+    } 
 
+    //CONNECTED DATA - sends the complete file
+    private void completeIncomingFile() {
+        byte[] readyToWrite = generateBytesFromData();
+        try {
+            File file = getTheFile(fileNameInProcess);
+            FileOutputStream fileOutputStream = new FileOutputStream(file);
+            fileOutputStream.write(readyToWrite);
+            fileOutputStream.close();
+            needToBcast = true; //someone wrote something to the server
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    //CONNECTED DATA - creates a whole file from the data packets
+    private byte[] generateBytesFromData() {
+        byte[] inProcess = incomingDataQueue.remove();
+        byte[] pureData = Arrays.copyOfRange(inProcess, 6, inProcess.length);
+        while (!incomingDataQueue.isEmpty()){
+            inProcess = incomingDataQueue.remove();
+            pureData = mergeBytes(pureData, Arrays.copyOfRange(inProcess, 6, inProcess.length));
+        }
+        return pureData;
+    }
+    //CONNECTED DATA
+    private byte[] mergeBytes(byte[] pureData, byte[] dataToMerge) {
+        byte[] appended = new byte[pureData.length + dataToMerge.length];
+        System.arraycopy(pureData, 0, appended, 0, pureData.length);
+        System.arraycopy(dataToMerge, 0, appended, pureData.length, dataToMerge.length);
+        return appended;
+    }
+
+    //RRQ
+    private void processReadRequest(byte[] message) {
+        String fileToRead = extractStringFromMsg(message);
+        if(!fileWithThisNameExist(fileToRead))
+            generateError(1, "File not found");
+        byte[] fileData = getDataOfFile(fileToRead);
+        createDataPackets(fileData);
+    }
+
+    //RRQ - CONNECTED
+    private byte[] getDataOfFile(String name) {
+        File file = getTheFile(name);
+        byte[] data = new byte[(int) file.length()];
+        try {
+            FileInputStream fileInputStream = new FileInputStream(file);
+            fileInputStream.read(data);
+            fileInputStream.close();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return data;
+    }
+
+    //WRQ - check if 
+    private void prepareToReadFromUser(byte[] message) {
+        fileNameInProcess = extractStringFromMsg(message);
+        if (fileWithThisNameExist(fileNameInProcess)){
+            generateError(5, "File already exists");
+        } 
+        else {
+            incomingDataQueue = new LinkedList<>();
+            generateGeneralAck();
+        }
+    }
     @Override
     public boolean shouldTerminate() {
         return shouldTerminate;
     } 
-
-        
-
-    
+   
 }
