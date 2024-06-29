@@ -24,6 +24,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     Connections<byte[]> connections;
     byte[] response;
     boolean shouldTerminate;
+
     public TftpProtocol(TftpServerUsers users){
         this.loggedUserList = users;
     }
@@ -40,16 +41,51 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     @Override
     public void process(byte[] message) {
         // TODO implement this
-        throw new UnsupportedOperationException("Unimplemented method 'process'");
+        brcastToUser(message);        
+        responseToSpecificUser();
+    }
+
+    //message to one user
+    private void responseToSpecificUser() {
+        byte[] theResponse = encode(response);
+        response = null;
+        if(theResponse!=null)
+            connections.send(connectionId, theResponse);
+    }
+
+    private void brcastToUser(byte[] message) {
+        if(needToBcast)
+        {
+            byte[] fileNameInBytes = extractBytesFromMsg(fileNameInProcess);
+            byte[] prefix = new byte[3];
+            OpcodeOperations opToSend = new OpcodeOperations(Opcode.BCAST);
+            System.arraycopy(opToSend.getInResponseFormat(), 0, prefix, 0, 2);
+            OpcodeOperations opFromMessage = extractOpFromMessage(message);
+            int i = opFromMessage.opcode.ordinal();
+            prefix[2] = (i == 8) ? (byte) 0 : (byte) 1;
+            byte[] toBroadcast = new byte[prefix.length + fileNameInBytes.length];
+            System.arraycopy(prefix, 0, toBroadcast, 0, prefix.length);
+            System.arraycopy(fileNameInBytes, 0, toBroadcast, prefix.length, fileNameInBytes.length);
+            Set<Integer> activeConnections = loggedUserList.getLoggedInUsersId();
+            toBroadcast = encode(toBroadcast);
+            for (Integer connectedUser :
+                    activeConnections) {
+                connections.send(connectedUser, toBroadcast);
+            }
+            fileNameInProcess = "";
+            needToBcast = false;
+        }
     }
 
     private String extractStringFromMsg(byte[] message){
         String result = new String(message, 2, message.length - 3, StandardCharsets.UTF_8);
         return result;
     }
+
     private byte[] extractBytesFromMsg(String str) {
         return str.getBytes(StandardCharsets.UTF_8);
     }
+
     private void generateGeneralAck() {
         OpcodeOperations op = new OpcodeOperations(Opcode.ACK);
         response = op.getGeneralAck();
@@ -76,6 +112,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         connections.disconnect(connectionId);
         shouldTerminate = true;        
     }
+
     //CONNECTED DISC adds zero byte at end of msg
     public byte[] encode(byte[] message) {
         if ((message != null) && (hasToAddZeroByte(message))){
@@ -87,12 +124,14 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         }
         return message;
     }
+
     //CONNECTED DISC checks if needs to end with 0
     private boolean hasToAddZeroByte(byte[] message) {
         OpcodeOperations opcodeOperations = extractOpFromMessage(message);
         return opcodeOperations.shouldAddZero();
     }
-    //CONNECTED DISC
+    
+    //CONNECTED DISC to know which action
     private OpcodeOperations extractOpFromMessage(byte[] message) {
         return new OpcodeOperations(message[1]);
     }
@@ -122,8 +161,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
 
     //CONNECTED DELRQ : creates or gets file from directory
     private File getTheFile(String fileName) {
-        return new File(pathToDir + File.separator + fileName);
-        
+        return new File(pathToDir + File.separator + fileName);        
     }
 
 
@@ -168,6 +206,23 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
     private int extractDataPacketNumber(byte[] dataPacket) {
         return ((dataPacket[4] & 0xFF) << 8) | (dataPacket[5] & 0xFF);
     }
+
+    private void getData (byte[] data){
+        incomingDataQueue.add(data);
+        generateAckReceived(data);
+        if(data.length != 518){ //last packet size
+            
+        }
+        
+    } 
+    //ACK for confirming data packet numbers 
+    private void generateAckReceived(byte[] message) {
+        OpcodeOperations opcodeOperationsResponse = new OpcodeOperations(Opcode.ACK);
+        response = new byte[4];
+        System.arraycopy(opcodeOperationsResponse.getInResponseFormat(), 0, response, 0, 2);
+        byte[] packetNumber = new byte[]{message[4], message[5]};
+        System.arraycopy(packetNumber, 0, response,2, packetNumber.length);
+    }    
 
     @Override
     public boolean shouldTerminate() {
