@@ -1,4 +1,5 @@
 package bgu.spl.net.impl.tftp;
+
 import bgu.spl.net.api.MessagingProtocol;
 import java.io.File;
 import java.io.FileInputStream;
@@ -23,7 +24,7 @@ public class TftpProtocol {
 
     private Queue<byte[]> dataToSendWRQ = new ConcurrentLinkedQueue<>();
 
-    //process for the keyboardThread
+    //KEYBOARD THREAD
     public synchronized String process(String msg) {
         String command = msg.substring(0, msg.indexOf(' ') > -1 ? msg.indexOf(' ') : msg.length());
         if (compareCommand(command) != null) {
@@ -50,13 +51,66 @@ public class TftpProtocol {
         return msg;
     }
 
-    //Check if the command is in the list
-    public String compareCommand(String command) {
-        String[] commands = {"LOGRQ", "DELRQ", "RRQ", "WRQ", "DIRQ", "DISC"};
-        for (String com : commands) if (com.equals(command)) return com;
+    //LISTENER THREAD
+    public synchronized byte[] process(byte[] msg) {
+        opsFromServer = new OpcodeOperations(msg[1]);
+        int blockNum;
+        switch (opsFromServer.opcode) {
+            case ACK:
+                blockNum = ((msg[2] & 0xFF) << 8) | (msg[3] & 0xFF);
+                System.out.println("ACK " + blockNum);
+                if (blockNum == 0 && opsToServer.opcode.equals(Opcode.DISC)){
+                    loggedIn = false;
+                    connected = false;
+                }
+                if (blockNum == 0 && opsToServer.opcode.equals(Opcode.LOGRQ)) 
+                    loggedIn = true;
+                return new byte[]{msg[2], msg[3]};
+            case BCAST:
+                String fileName = new String(Arrays.copyOfRange(msg, 3, msg.length), StandardCharsets.UTF_8);
+                if (msg[2] == 0) 
+                    System.out.println("BCAST Deleted " + fileName);
+                else 
+                    System.out.println("BCAST Added " + fileName);
+                return null;
+            case ERROR:
+                int errCode = ((msg[2] & 0xFF) << 8) | (msg[3] & 0xFF);
+                String errMsg = new String(Arrays.copyOfRange(msg, 4, msg.length), StandardCharsets.UTF_8);
+                System.out.println("ERROR " + errCode + " " + errMsg);
+                resetInputs();
+                return null;
+            case DATA:
+                int packetSize = ((msg[2] & 0xFF) << 8) | (msg[3] & 0xFF);
+                blockNum = ((msg[4] & 0xFF) << 8) | (msg[5] & 0xFF);
+                if (opsToServer.opcode == Opcode.RRQ) {
+                    mergeToFile(msg, packetSize);
+                    if (packetSize < 512) {
+                        try {
+                            FileOutputStream outputStream = new FileOutputStream(fileNameForRRQ);
+                            outputStream.write(toFile);
+                            outputStream.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                        System.out.println("RRQ " + fileNameForRRQ + " complete");
+                    }
+                    return generateACK(blockNum);
+                }
+                else if (opsToServer.opcode == Opcode.DIRQ) {
+                    mergeForDIRQ(msg);
+                    if (packetSize < 512) {
+                        String[] toPrint = forDIRQ.split("\u0000");
+                        forDIRQ = "";
+                        for (String s : toPrint) {
+                            System.out.println(s);
+                        }
+                    }
+                    return generateACK(blockNum);
+                }
+        }
         return null;
     }
-
+    
     public byte[] processWRQ(int packetNumACK) {
         if (dataToSendWRQ.isEmpty() && opsFromServer.opcode.equals(Opcode.ACK) && opsToServer.opcode.equals(Opcode.WRQ)) {
             File file = new File(fileNameForWRQ);
@@ -119,6 +173,13 @@ public class TftpProtocol {
     }
 
 
+    //Check if the command is in the list
+    public String compareCommand(String command) {
+        String[] commands = {"LOGRQ", "DELRQ", "RRQ", "WRQ", "DIRQ", "DISC"};
+        for (String com : commands) if (com.equals(command)) return com;
+        return null;
+    }
+
     private void resetInputs() {
         opsFromServer = new OpcodeOperations(Opcode.UNDEFINED);
         opsToServer = new OpcodeOperations(Opcode.UNDEFINED);
@@ -134,5 +195,23 @@ public class TftpProtocol {
         System.arraycopy(toFile, 0, merged, 0, toFile.length);
         System.arraycopy(msg, 6, merged, toFile.length, packetSize);
         toFile = merged;
+    }
+
+    private void mergeForDIRQ(byte[] msg) {
+        forDIRQ = forDIRQ + new String(Arrays.copyOfRange(msg, 6, msg.length), StandardCharsets.UTF_8);
+    }
+
+    private byte[] generateACK(int blockNum) {
+        byte[] ack = new byte[4];
+        ack[0] = 0;
+        ack[1] = 4;
+        ack[2] = (byte) ((blockNum >> 8) & 0xFF);
+        ack[3] = (byte) (blockNum & 0xFF);
+        return ack;
+    }
+
+    //@Override
+    public boolean shouldTerminate() {
+        return !(connected);
     }
 }
