@@ -34,5 +34,10 @@ public interface Server<T> extends Closeable {
 
     }
 
+    static Server threadPerClient(int port, Supplier<BidiMessagingProtocol<T>> protocolFactory, Object encoderDecoderFactory) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'threadPerClient'");
+    }
+
 
 }
