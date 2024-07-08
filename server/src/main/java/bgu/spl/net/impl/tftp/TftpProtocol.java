@@ -36,7 +36,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         this.needToBcast = false;
         this.connectionId = connectionId;
         this.connections = connections;
-        this.pathToDir = "Files";        
+        this.pathToDir = "server/Files";        
     }
     
     @Override

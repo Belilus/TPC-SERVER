@@ -43,36 +43,42 @@ public class TftpClient {
     public void start() {
         keyboardThread = new Thread(() -> {
             try {
+                System.out.println("Keyboard thread started");
                 String userInput;
                 String userOp;
                 while (!protocol.shouldTerminate()) {
-                    String fileName = null;
-                    if (keyboardReader.ready()) {
-                        if ((userInput = keyboardReader.readLine()) != null) {
-                            userOp = userInput.substring(0, userInput.indexOf(' ') > -1 ? userInput.indexOf(' ') : userInput.length());
-                            if (!(userOp.equals("DIRQ") | userOp.equals("DISC")) && (userOp = protocol.compareCommand(userOp)) != null)
-                            fileName = userInput.substring(userOp.length() + 1);
-                            if ((protocol.process(userInput)) != null) {
-                                send(encdec.encode(userOp, fileName));
-                                if (userOp!= null && userOp.equals("WRQ")) {
-                                    doneWRQ = false;
-                                }
+                    String fileName = null; // Declare fileName here
+                    // Remove the ready() check and readLine() directly
+                    if ((userInput = keyboardReader.readLine()) != null) {
+                        System.out.println("User input: " + userInput);
+                        userOp = userInput.substring(0, userInput.indexOf(' ') > -1 ? userInput.indexOf(' ') : userInput.length());
+                        if (!(userOp.equals("DIRQ") || userOp.equals("DISC"))) {
+                            if ((userOp = protocol.compareCommand(userOp)) != null) {
+                                fileName = userInput.substring(userOp.length() + 1);
+                            }
+                        }
+                        if ((protocol.process(userInput)) != null) {
+                            send(encdec.encode(userOp, fileName));
+                            if (userOp != null && userOp.equals("WRQ")) {
+                                doneWRQ = false;
                             }
                         }
                     }
                 }
-            } 
-            catch (IOException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         });
         keyboardThread.start();
+        
         listeningThread = new Thread(() -> {
             try {
+                System.out.println("Listening thread started");
                 int read;
                 byte[] serverInput;
                 while (!protocol.shouldTerminate()) {
                     if (in.available() > 0) {
+                        //System.out.println("Input stream is available");
                         read = in.read();
                         if (read >= 0) {
                             serverInput = encdec.decodeNextByte((byte) read);
@@ -90,15 +96,74 @@ public class TftpClient {
                             }
                         }
                     }
-
                 }
-            } 
-            catch (IOException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         });
         listeningThread.start();
     }
+    
+    
+    // public void start() {
+    //     keyboardThread = new Thread(() -> {
+    //         try {
+    //             String userInput;
+    //             String userOp;
+    //             while (!protocol.shouldTerminate()) {
+    //                 String fileName = null;
+    //                 if (keyboardReader.ready()) {
+    //                     if ((userInput = keyboardReader.readLine()) != null) {
+    //                         userOp = userInput.substring(0, userInput.indexOf(' ') > -1 ? userInput.indexOf(' ') : userInput.length());
+    //                         if (!(userOp.equals("DIRQ") | userOp.equals("DISC")) && (userOp = protocol.compareCommand(userOp)) != null)
+    //                         fileName = userInput.substring(userOp.length() + 1);
+    //                         if ((protocol.process(userInput)) != null) {
+    //                             send(encdec.encode(userOp, fileName));
+    //                             if (userOp!= null && userOp.equals("WRQ")) {
+    //                                 doneWRQ = false;
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         } 
+    //         catch (IOException e) {
+    //             e.printStackTrace();
+    //         }
+    //     });
+    //     keyboardThread.start();
+    //     listeningThread = new Thread(() -> {
+    //         try {
+    //             int read;
+    //             byte[] serverInput;
+    //             while (!protocol.shouldTerminate()) {
+    //                 if (in.available() > 0) {
+    //                     read = in.read();
+    //                     if (read >= 0) {
+    //                         serverInput = encdec.decodeNextByte((byte) read);
+    //                         if (serverInput != null) {
+    //                             byte[] response = protocol.process(serverInput);
+    //                             if (response != null) {
+    //                                 if (response.length > 2) 
+    //                                     send(response);
+    //                                 else if (response.length == 2) {
+    //                                     numACK = ((response[0] & 0xFF) << 8) | (response[1] & 0xFF);
+    //                                     if (!doneWRQ) 
+    //                                         sendPackets();
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+
+    //             }
+    //         } 
+    //         catch (IOException e) {
+    //             e.printStackTrace();
+    //         }
+    //     });
+    //     listeningThread.start();
+    // }
 
     private void sendPackets() {
         byte[] packet;
@@ -130,10 +195,10 @@ public class TftpClient {
     
     //TODO: implement the main logic of the client, when using a thread per client the main logic goes here
     public static void main(String[] args) {
-        String serverAddress = "10.100.102.8";
-        //String serverAddress = args[0];
+        String serverAddress = "192.168.1.248";
+        // String serverAddress = args[0];
         int port = 7777;
-        //int port = Integer.parseInt(args[1]);
+        // int port = Integer.parseInt(args[1]);
         TftpClient client = new TftpClient(serverAddress, port);
         client.start();
         client.waitForThreads();
