@@ -25,7 +25,8 @@ public class TftpClient {
             in = socket.getInputStream();
             out = socket.getOutputStream();
 
-        } catch (IOException e) {
+        } 
+        catch (IOException e) {
             e.printStackTrace();
         }
     }
@@ -33,7 +34,8 @@ public class TftpClient {
     private void close() {
         try {
             socket.close();
-        } catch (IOException e) {
+        } 
+        catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -59,7 +61,8 @@ public class TftpClient {
                         }
                     }
                 }
-            } catch (IOException e) {
+            } 
+            catch (IOException e) {
                 e.printStackTrace();
             }
         });
@@ -89,7 +92,8 @@ public class TftpClient {
                     }
 
                 }
-            } catch (IOException e) {
+            } 
+            catch (IOException e) {
                 e.printStackTrace();
             }
         });
@@ -109,7 +113,8 @@ public class TftpClient {
 //            System.out.println("#sending opcode " + Opcode.getByOrdinal(msg[1]).name());
             out.write(msg);
             out.flush();
-        } catch (IOException e) {
+        } 
+        catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -117,23 +122,22 @@ public class TftpClient {
         try {
             keyboardThread.join();
             listeningThread.join();
-        } catch (InterruptedException e) {
+        } 
+        catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
     }
     
     //TODO: implement the main logic of the client, when using a thread per client the main logic goes here
     public static void main(String[] args) {
-        //String serverAddress = "10.100.102.8";
-        String serverAddress = args[0];
-        //int port = 7777;
-        int port = Integer.parseInt(args[1]);
+        String serverAddress = "10.100.102.8";
+        //String serverAddress = args[0];
+        int port = 7777;
+        //int port = Integer.parseInt(args[1]);
         TftpClient client = new TftpClient(serverAddress, port);
         client.start();
-
         client.waitForThreads();
         client.close();
-
     }
 }
 

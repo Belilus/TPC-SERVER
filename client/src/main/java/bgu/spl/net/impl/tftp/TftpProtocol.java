@@ -1,6 +1,7 @@
 package bgu.spl.net.impl.tftp;
 
 import bgu.spl.net.api.MessagingProtocol;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -10,7 +11,7 @@ import java.util.Arrays;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class TftpProtocol {
+public class TftpProtocol implements MessagingProtocol<byte[]>{
     private OpcodeOperations opsFromServer;
     private OpcodeOperations opsToServer;
 
@@ -210,7 +211,7 @@ public class TftpProtocol {
         return ack;
     }
 
-    //@Override
+    @Override
     public boolean shouldTerminate() {
         return !(connected);
     }
