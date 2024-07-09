@@ -195,7 +195,7 @@ public class TftpClient {
     
     //TODO: implement the main logic of the client, when using a thread per client the main logic goes here
     public static void main(String[] args) {
-        String serverAddress = "192.168.1.248";
+        String serverAddress = "192.168.1.119";
         // String serverAddress = args[0];
         int port = 7777;
         // int port = Integer.parseInt(args[1]);
