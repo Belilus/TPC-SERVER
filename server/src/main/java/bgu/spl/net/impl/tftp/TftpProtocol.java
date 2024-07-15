@@ -382,44 +382,7 @@ public class TftpProtocol implements BidiMessagingProtocol<byte[]>  {
         }
     }
 
-    // //DIRQ  
-    // private void getDirectory() { 
-    //     List<String> listOfFiles = new LinkedList<>();
-    //     String directoryPath = pathToDir;            
-    //     File directory = new File(directoryPath);             
-    //     // Using listFiles method we get all the files of a directory        
-    //     File[] files = directory.listFiles();  
-    //     if (files != null) { 
-    //         for (File file : files) { 
-    //             listOfFiles.add(file.getName()); 
-    //         } 
-    //     }       
-    //     generateDirFromStringToByte(listOfFiles);                    
-    // }
     
-    // //CONNECTED DIRQ
-    // private byte[] generateDirFromStringToByte(List<String> listOfFiles) {
-    //     List<byte[]> listOfFilesAsByte = new LinkedList<>();        
-    //     int sizeOfDir = 0;
-    //     int pointerForAddingFiles = 0;
-    //     if(listOfFiles == null) 
-    //         System.out.println("The directory is empty or didn't convert to byte");
-    //     for(String filename : listOfFiles){
-    //         byte[] fileByteName = extractBytesFromMsg(filename);
-    //         sizeOfDir += fileByteName.length;
-    //         listOfFilesAsByte.add(fileByteName);
-    //     }
-    //     sizeOfDir += listOfFilesAsByte.size() - 1; //make gap between each file with 0 byte
-    //     byte[] dirData = new byte[sizeOfDir];
-    //     for(byte[] byteFileName : listOfFilesAsByte){
-    //         System.arraycopy(byteFileName, 0, dirData, pointerForAddingFiles, byteFileName.length);
-    //         pointerForAddingFiles += byteFileName.length;
-    //         dirData[pointerForAddingFiles] = (byte) 0;
-    //         pointerForAddingFiles++;
-    //     }
-    //     return dirData;
-    // }
-
     //DIRQ
     private void getDirectory() {
         List<String> listOfFiles = new LinkedList<>();
