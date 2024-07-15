@@ -104,66 +104,7 @@ public class TftpClient {
         listeningThread.start();
     }
     
-    
-    // public void start() {
-    //     keyboardThread = new Thread(() -> {
-    //         try {
-    //             String userInput;
-    //             String userOp;
-    //             while (!protocol.shouldTerminate()) {
-    //                 String fileName = null;
-    //                 if (keyboardReader.ready()) {
-    //                     if ((userInput = keyboardReader.readLine()) != null) {
-    //                         userOp = userInput.substring(0, userInput.indexOf(' ') > -1 ? userInput.indexOf(' ') : userInput.length());
-    //                         if (!(userOp.equals("DIRQ") | userOp.equals("DISC")) && (userOp = protocol.compareCommand(userOp)) != null)
-    //                         fileName = userInput.substring(userOp.length() + 1);
-    //                         if ((protocol.process(userInput)) != null) {
-    //                             send(encdec.encode(userOp, fileName));
-    //                             if (userOp!= null && userOp.equals("WRQ")) {
-    //                                 doneWRQ = false;
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         } 
-    //         catch (IOException e) {
-    //             e.printStackTrace();
-    //         }
-    //     });
-    //     keyboardThread.start();
-    //     listeningThread = new Thread(() -> {
-    //         try {
-    //             int read;
-    //             byte[] serverInput;
-    //             while (!protocol.shouldTerminate()) {
-    //                 if (in.available() > 0) {
-    //                     read = in.read();
-    //                     if (read >= 0) {
-    //                         serverInput = encdec.decodeNextByte((byte) read);
-    //                         if (serverInput != null) {
-    //                             byte[] response = protocol.process(serverInput);
-    //                             if (response != null) {
-    //                                 if (response.length > 2) 
-    //                                     send(response);
-    //                                 else if (response.length == 2) {
-    //                                     numACK = ((response[0] & 0xFF) << 8) | (response[1] & 0xFF);
-    //                                     if (!doneWRQ) 
-    //                                         sendPackets();
-    //                                 }
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-
-    //             }
-    //         } 
-    //         catch (IOException e) {
-    //             e.printStackTrace();
-    //         }
-    //     });
-    //     listeningThread.start();
-    // }
+   
 
     private void sendPackets() {
         byte[] packet;
@@ -175,7 +116,6 @@ public class TftpClient {
 
     private synchronized void send(byte[] msg) {
         try {
-//            System.out.println("#sending opcode " + Opcode.getByOrdinal(msg[1]).name());
             out.write(msg);
             out.flush();
         } 
